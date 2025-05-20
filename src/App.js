@@ -1,24 +1,73 @@
-import logo from './logo.svg';
-import './App.css';
+import { Routes, Route } from "react-router-dom";
+import "./global.css";
+import MainLayout from "./layouts/MainLayout";
+import Home from "./pages/Home";
+import PostDetails from "./pages/PostDetails";
+import CreatePost from "./pages/CreatePost";
+import LoginPage from "./pages/auth/Login";
+import NotificationsPage from "./pages/Notification";
 
 function App() {
   return (
-    <div className="App">
-      <header className="App-header">
-        <img src={logo} className="App-logo" alt="logo" />
-        <p>
-          Edit <code>src/App.js</code> and save to reload.
-        </p>
-        <a
-          className="App-link"
-          href="https://reactjs.org"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Learn React
-        </a>
-      </header>
-    </div>
+    <Routes>
+      <Route path="/auth/login" element={<LoginPage />} />
+
+      <Route path="/" element={<MainLayout />}>
+        {/* Trending (Homepage) */}
+        <Route index element={<Home mode="category" category="trending" />} />
+
+        {/* Latest */}
+        <Route
+          path="latest"
+          element={<Home mode="category" category="latest" />}
+        />
+
+        {/* Following */}
+        <Route
+          path="following"
+          element={<Home mode="category" category="following" />}
+        />
+
+        {/* Interests */}
+        <Route
+          path="interests"
+          element={<Home mode="category" category="interests" />}
+        />
+
+        {/* Inner Circle */}
+        <Route
+          path="inner-circle"
+          element={<Home mode="category" category="inner circle" />}
+        />
+
+        {/* My Posts */}
+        <Route
+          path="my-posts"
+          element={<Home mode="category" category="my posts" />}
+        />
+
+        {/* Saved Posts */}
+        <Route
+          path="saved-posts"
+          element={<Home mode="category" category="saved posts" />}
+        />
+
+        {/* Other routes */}
+        <Route path="post/:id" element={<PostDetails />} />
+        <Route path="create-post" element={<CreatePost />} />
+
+        {/* Interest-based polls */}
+        <Route path="interest/:topic" element={<Home mode="interest" />} />
+
+        {/* Tag-based polls */}
+        <Route path="tag/:tagName" element={<Home mode="tag" />} />
+
+        {/* User's own polls */}
+        <Route path="user/:username" element={<Home mode="user" />} />
+
+        <Route path="notifications" element={<NotificationsPage />} />
+      </Route>
+    </Routes>
   );
 }
 
