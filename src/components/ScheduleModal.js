@@ -1,222 +1,167 @@
-import { useState } from "react";
-import { Smile, UploadCloud, Clock, Globe, ChevronDown } from "lucide-react";
-import ScheduleModal from "./ScheduleModal"; // import the modal component
+import { useState } from 'react';
+import { X } from 'lucide-react';
 
-const PostForm = ({ onPost }) => {
-  const [postContent, setPostContent] = useState("");
-  const [postAllowComments, setPostAllowComments] = useState(true);
-  const [postMedia, setPostMedia] = useState(null);
+const ScheduleModal = ({ onClose, onSchedule, initialDate }) => {
+  const [selectedOption, setSelectedOption] = useState(initialDate ? 'custom' : 'now');
+  const [customDate, setCustomDate] = useState(
+    initialDate ? new Date(initialDate).toISOString().split('T')[0] : ''
+  );
+  const [customTime, setCustomTime] = useState(
+    initialDate ? new Date(initialDate).toTimeString().slice(0, 5) : ''
+  );
+  const [timePeriod, setTimePeriod] = useState(
+    initialDate ? (new Date(initialDate).getHours() >= 12 ? 'PM' : 'AM') : 'AM'
+  );
 
-  const [visibility, setVisibility] = useState("Public");
-  const [showDropdown, setShowDropdown] = useState(false);
-
-  // For schedule modal
-  const [showScheduleModal, setShowScheduleModal] = useState(false);
-  const [scheduledDate, setScheduledDate] = useState(null); // store full datetime string
-
-  // Handle file selection
-  const handleMediaChange = (e) => {
-    setPostMedia(e.target.files[0]);
+  // Convert 24h time to 12h format
+  const convertTo12Hour = (time24) => {
+    const [hours, minutes] = time24.split(':').map(Number);
+    const period = hours >= 12 ? 'PM' : 'AM';
+    const hours12 = hours % 12 || 12;
+    return {
+      time: `${String(hours12).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`,
+      period
+    };
   };
 
-  // Toggle visibility dropdown
-  const toggleVisibilityDropdown = (e) => {
-    e.preventDefault();
-    setShowDropdown((prev) => !prev);
+  // Convert 12h time to 24h format
+  const convertTo24Hour = (time12, period) => {
+    const [hours, minutes] = time12.split(':').map(Number);
+    const hours24 = period === 'PM' ? (hours % 12) + 12 : hours % 12;
+    return `${String(hours24).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
   };
 
-  // Set visibility option
-  const handleVisibilityChange = (option) => {
-    setVisibility(option);
-    setShowDropdown(false);
-  };
-
-  // Open schedule modal
-  const openScheduleModal = (e) => {
-    e.preventDefault();
-    setShowScheduleModal(true);
-  };
-
-  // Close schedule modal
-  const closeScheduleModal = () => {
-    setShowScheduleModal(false);
-  };
-
-  // Save scheduled date/time from modal
-  const handleScheduleSave = (date, time) => {
-    if (date && time) {
-      // Combine date and time into a single ISO string
-      const combinedDateTime = new Date(`${date}T${time}`);
-      setScheduledDate(combinedDateTime.toISOString());
+  const handleSchedule = () => {
+    if (selectedOption === 'now') {
+      onSchedule(new Date());
     } else {
-      setScheduledDate(null);
+      if (!customDate || !customTime) {
+        alert('Please select both date and time');
+        return;
+      }
+      const time24 = convertTo24Hour(customTime, timePeriod);
+      const scheduledDate = new Date(`${customDate}T${time24}`);
+      if (scheduledDate <= new Date()) {
+        // alert('Please select a future date and time');
+        return;
+      }
+      onSchedule(scheduledDate);
     }
   };
 
-  // Handle form submission
-  const handleSubmit = (e) => {
-    e.preventDefault();
-
-    const formData = new FormData();
-    formData.append("postContent", postContent);
-    formData.append("postAllowComments", postAllowComments);
-    formData.append("visibility", visibility);
-    if (postMedia) {
-      formData.append("postMedia", postMedia);
+  // Initialize time in 12-hour format if there's an initial date
+  useState(() => {
+    if (initialDate) {
+      const { time, period } = convertTo12Hour(new Date(initialDate).toTimeString().slice(0, 5));
+      setCustomTime(time);
+      setTimePeriod(period);
     }
-    if (scheduledDate) {
-      formData.append("scheduledDate", scheduledDate); // append scheduled datetime
-    }
-
-    if (onPost) {
-      onPost(formData);
-    }
-  };
-
-  const handleCancel = () => {
-    window.history.back();
-  };
+  }, [initialDate]);
 
   return (
-    <>
-      <form onSubmit={handleSubmit} className="space-y-8 w-full">
-        {/* Post Content */}
-        <div className="p-5 pb-0">
-          <label className="block font-medium text-sm mb-2">
-            Write your post*
-          </label>
-          <textarea
-            className="w-full rounded-xl border border-gray-300 p-4 resize-none focus:outline-none focus:ring-2 focus:ring-pink-500 bg-gray-50"
-            rows={6}
-            maxLength={1000}
-            placeholder="What's on your mind?"
-            value={postContent}
-            onChange={(e) => setPostContent(e.target.value)}
-          />
-          <div className="text-xs text-right text-gray-400 mt-1">
-            {postContent.length} / 1000
-          </div>
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-xl p-6 w-full max-w-md">
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-xl font-semibold">Schedule Post</h2>
+          <button
+            onClick={onClose}
+            className="text-gray-500 hover:text-gray-700"
+          >
+            <X size={24} />
+          </button>
         </div>
 
-        {/* Allow Comments */}
-        <div className="px-5 flex items-center space-x-3">
-          <input
-            type="checkbox"
-            id="postAllowComments"
-            checked={postAllowComments}
-            onChange={() => setPostAllowComments(!postAllowComments)}
-            className="w-5 h-5 text-pink-500 rounded border-gray-300 focus:ring-pink-500 bg-gray-50"
-          />
-          <label htmlFor="postAllowComments" className="text-sm font-medium">
-            Allow Comments
-          </label>
-          <span className="text-sm text-gray-500">From everyone</span>
-        </div>
-
-        {/* Media + Schedule + Visibility */}
-        <div className="px-5">
-          <div className="flex justify-between items-center gap-4 flex-wrap">
-            {/* Upload Button */}
-            <label
-              htmlFor="mediaUpload"
-              className="inline-flex items-center gap-2 border border-dashed border-pink-500 rounded-xl py-2 px-4 bg-gray-50 text-pink-600 cursor-pointer hover:bg-pink-50 transition"
-            >
-              <UploadCloud size={20} />
-              <span className="font-medium text-sm">Image/Video</span>
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <label className="flex items-center space-x-2">
               <input
-                type="file"
-                id="mediaUpload"
-                accept="image/*,video/*"
-                onChange={handleMediaChange}
-                className="hidden"
+                type="radio"
+                value="now"
+                checked={selectedOption === 'now'}
+                onChange={(e) => setSelectedOption(e.target.value)}
+                className="text-pink-500 focus:ring-pink-500"
               />
+              <span>Post Now</span>
             </label>
 
-            {/* Schedule Button + Public Dropdown */}
-            <div className="flex items-center gap-2">
-              <button
-                onClick={openScheduleModal}
-                className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-pink-50 text-pink-600 hover:bg-pink-100 transition text-sm font-medium"
-              >
-                <Clock size={16} />
-                Schedule
-              </button>
-
-              <div className="relative">
-                <button
-                  onClick={toggleVisibilityDropdown}
-                  className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-pink-50 text-pink-600 hover:bg-pink-100 transition text-sm font-medium"
-                >
-                  <Globe size={16} />
-                  {visibility}
-                  <ChevronDown size={16} />
-                </button>
-
-                {showDropdown && (
-                  <div className="absolute right-0 mt-2 w-48 bg-white border border-gray-200 rounded-xl shadow-lg z-10 overflow-hidden">
-                    {["Public", "Followers", "Inner circle", "Group"].map(
-                      (option) => (
-                        <div
-                          key={option}
-                          className={`px-4 py-2 text-sm cursor-pointer hover:bg-gray-100 ${
-                            visibility === option
-                              ? "text-pink-600 font-semibold"
-                              : "text-gray-800"
-                          }`}
-                          onClick={() => handleVisibilityChange(option)}
-                        >
-                          {option}
-                        </div>
-                      )
-                    )}
-                  </div>
-                )}
-              </div>
-            </div>
+            <label className="flex items-center space-x-2">
+              <input
+                type="radio"
+                value="custom"
+                checked={selectedOption === 'custom'}
+                onChange={(e) => setSelectedOption(e.target.value)}
+                className="text-pink-500 focus:ring-pink-500"
+              />
+              <span>Schedule for Later</span>
+            </label>
           </div>
 
-          {/* Selected File */}
-          {postMedia && (
-            <div className="mt-2 text-sm text-gray-700">
-              Selected file: {postMedia.name}
-            </div>
-          )}
-
-          {/* Show Scheduled Date/Time */}
-          {scheduledDate && (
-            <div className="mt-2 text-sm text-pink-600 font-medium">
-              Scheduled for: {new Date(scheduledDate).toLocaleString()}
+          {selectedOption === 'custom' && (
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Date
+                </label>
+                <input
+                  type="date"
+                  value={customDate}
+                  onChange={(e) => setCustomDate(e.target.value)}
+                  min={new Date().toISOString().split('T')[0]}
+                  className="w-full rounded-lg border border-gray-300 p-2 focus:ring-2 focus:ring-pink-500 focus:border-pink-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Time
+                </label>
+                <div className="flex gap-2">
+                  <select
+                    value={customTime}
+                    onChange={(e) => setCustomTime(e.target.value)}
+                    className="w-full rounded-lg border border-gray-300 p-2 focus:ring-2 focus:ring-pink-500 focus:border-pink-500"
+                  >
+                    {Array.from({ length: 12 * 4 }, (_, i) => {
+                      const hour = Math.floor(i / 4) + 1; // 1-12
+                      const minute = (i % 4) * 15;
+                      const time = `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+                      return (
+                        <option key={time} value={time}>
+                          {time}
+                        </option>
+                      );
+                    })}
+                  </select>
+                  <select
+                    value={timePeriod}
+                    onChange={(e) => setTimePeriod(e.target.value)}
+                    className="w-24 rounded-lg border border-gray-300 p-2 focus:ring-2 focus:ring-pink-500 focus:border-pink-500"
+                  >
+                    <option value="AM">AM</option>
+                    <option value="PM">PM</option>
+                  </select>
+                </div>
+              </div>
             </div>
           )}
         </div>
 
-        {/* Buttons */}
-        <div className="flex justify-between items-center p-5 border-t border-gray-300 sticky bottom-0 bg-white">
+        <div className="mt-6 flex justify-end space-x-3">
           <button
-            type="button"
-            className="bg-gray-300 text-black px-4 py-2 rounded-lg"
-            onClick={handleCancel}
+            onClick={onClose}
+            className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200"
           >
             Cancel
           </button>
-
           <button
-            type="submit"
-            className="bg-pink-500 text-white px-4 py-2 rounded-lg"
+            onClick={handleSchedule}
+            className="px-4 py-2 text-white bg-pink-500 rounded-lg hover:bg-pink-600"
           >
-            Post
+            {selectedOption === 'now' ? 'Post Now' : 'Schedule'}
           </button>
         </div>
-      </form>
-
-      {/* Schedule Modal */}
-      <ScheduleModal
-        isOpen={showScheduleModal}
-        onClose={closeScheduleModal}
-        onSave={handleScheduleSave}
-      />
-    </>
+      </div>
+    </div>
   );
 };
 
-export default PostForm;
+export default ScheduleModal; 

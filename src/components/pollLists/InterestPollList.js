@@ -3,7 +3,7 @@ import { ArrowLeft } from "lucide-react";
 import PostCard from "../PostCard";
 import { BASE_URL } from "../../config";
 
-const InterestPollList = ({ topic }) => {
+const InterestPollList = ({ topic, onOpenModal }) => {
   const [polls, setPolls] = useState([]);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
@@ -73,6 +73,11 @@ const InterestPollList = ({ topic }) => {
     [loading, hasMore]
   );
 
+  const handlePostUnsave = (postId) => {
+    // Remove the post from the list if it was unsaved
+    setPolls(prevPolls => prevPolls.filter(poll => poll.id !== postId));
+  };
+
   return (
     <div className="w-full h-full flex flex-col overflow-hidden">
       {/* Header */}
@@ -94,7 +99,11 @@ const InterestPollList = ({ topic }) => {
             key={post.id || index}
             ref={index === polls.length - 1 ? lastPostRef : null}
           >
-            <PostCard post={post} />
+            <PostCard 
+              post={post} 
+              onOpenModal={onOpenModal}
+              onUnsave={handlePostUnsave}
+            />
           </div>
         ))}
 

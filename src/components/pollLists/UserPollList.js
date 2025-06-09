@@ -4,129 +4,172 @@ import axios from "axios";
 import { BASE_URL } from "../../config";
 import PostCard from "../PostCard";
 import { useLocation } from "react-router-dom";
+import EditProfileModal from "./EditProfileModal";
 import {
-  ArrowLeft,
-  Users,
-  UserPlus,
-  LayoutDashboard,
-  Circle,
-  UsersRound,
-  UserCircle2,
+    ArrowLeft,
+    Users,
+    UserPlus,
+    LayoutDashboard,
+    Circle,
+    UsersRound,
+    UserCircle2,
 } from "lucide-react";
+import PostModal from "../PostModal";
 
 export default function UserProfile() {
-  const [profile, setProfile] = useState(null);
-  const [polls, setPolls] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [followLoading, setFollowLoading] = useState(false);
+    const [profile, setProfile] = useState(null);
+    const [polls, setPolls] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [followLoading, setFollowLoading] = useState(false);
+    const [isEditProfileModalOpen, setIsEditProfileModalOpen] = useState(false);
+    const [selectedPostId, setSelectedPostId] = useState(null);
 
-  const location = useLocation();
-  const userId = location.state?.userId || null;
+    const location = useLocation();
+    const userId = location.state?.userId || null;
 
-  useEffect(() => {
-    async function fetchData() {
-      try {
-        const profileRes = await axios.get(
-          `${BASE_URL}/user/profile/${userId}`,
-          {
-            headers: {
-              Authorization: `Bearer ${localStorage.getItem("token")}`,
-            },
-            params: { type: "profile" },
-          }
-        );
+    // Parse localStorage to check if user is viewing their own profile
+    const ownProfile = localStorage.getItem("user");
+    const ownProfileId = ownProfile ? JSON.parse(ownProfile).id : null;
+    const isOwnProfile = ownProfileId === userId;
 
-        const pollsRes = await axios.get(`${BASE_URL}/user/profile/${userId}`, {
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem("token")}`,
-          },
-          params: { type: "polls", page: 1, limit: 10 },
-        });
-
-        setProfile(profileRes.data);
-        setPolls(pollsRes.data);
-      } catch (err) {
-        console.error("Error fetching user profile:", err);
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    fetchData();
-  }, [userId]);
-
-  // Parse localStorage to check if user is viewing their own profile
-  const ownProfile = localStorage.getItem("user");
-  const ownProfileId = ownProfile ? JSON.parse(ownProfile).id : null;
-  const isOwnProfile = ownProfileId === userId;
-
-  const profileStats = [
-    {
-      label: "Followers",
-      value: profile?.followers || 0,
-      icon: <Users className="h-6 w-6 stroke-[1.5] text-gray-500" />,
-    },
-    {
-      label: "Following",
-      value: profile?.following || 0,
-      icon: <UserPlus className="h-6 w-6 stroke-[1.5] text-gray-500" />,
-    },
-    {
-      label: "Number of Posts",
-      value: profile?.publicPolls || 0,
-      icon: <LayoutDashboard className="h-6 w-6 stroke-[1.5] text-gray-500" />,
-    },
-  ];
-
-  // Append extra stats if this is the user's own profile
-  if (isOwnProfile) {
-    profileStats.push(
-      {
-        label: "Inner Circle",
-        value: profile?.in_inner_circle || 0,
-        icon: <Circle className="h-6 w-6 stroke-[1.5] text-gray-500" />,
-      },
-      {
-        label: "Groups Joined",
-        value: profile?.joined_groups || 0,
-        icon: <UsersRound className="h-6 w-6 stroke-[1.5] text-gray-500" />,
-      },
-      {
-        label: "Groups Created",
-        value: profile?.created_groups || 0,
-        icon: <UserCircle2 className="h-6 w-6 stroke-[1.5] text-gray-500" />,
-      }
-    );
-  }
-
-  const [isFollowing, setIsFollowing] = useState(profile?.youFollow === 1);
-
-  const handleFollowToggle = async () => {
-    setFollowLoading(true);
-
-    const action = isFollowing ? "unfl" : "fl";
-    const url = `${BASE_URL}/user/manage-follow?user_id=${userId}&type=${action}`;
-
-    try {
-      await fetch(url, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${localStorage.getItem("token")}`,
-        },
-      });
-
-      setIsFollowing(!isFollowing);
-    } catch (error) {
-      console.error("Follow/unfollow failed:", error);
-    } finally {
-      setFollowLoading(false);
-    }
+    const handleProfileUpdate = (updatedProfile) => {
+      setProfile(updatedProfile);
   };
 
-  useEffect(() => {
-    setIsFollowing(profile?.youFollow === 1);
-  }, [profile?.youFollow]);
+    useEffect(() => {
+        async function fetchData() {
+            try {
+                // console.log("Fetching profile for userId:", userId);
+                const profileRes = await axios.get(
+                    `${BASE_URL}/user/profile/${userId}`,
+                    {
+                        headers: {
+                            Authorization: `Bearer ${localStorage.getItem("token")}`,
+                        },
+                        params: { type: "profile" },
+                    }
+                );
+
+                console.log("Fetching polls for userId:", userId, "isOwnProfile:", isOwnProfile);
+                const pollsRes = await axios.post(
+                    `${BASE_URL}/polls/get-polls`,
+                    {},
+                    {
+                        headers: {
+                            Authorization: `Bearer ${localStorage.getItem("token")}`,
+                        },
+                        params: {
+                            page: 1,
+                            limit: 10,
+                            category: "posted",
+                            ...(isOwnProfile ? {} : { forProfile: userId }),
+                            include_unpublished: isOwnProfile
+                        }
+                    }
+                );
+
+                setProfile(profileRes.data);
+                // Filter out scheduled posts from the user profile
+                const filteredPolls = pollsRes.data.filter(poll => poll.scheduled !== 1);
+                setPolls(filteredPolls);
+                console.log("Fetched polls:", filteredPolls);
+            } catch (err) {
+                console.error("Error fetching user profile or polls:", err);
+            } finally {
+                setLoading(false);
+            }
+        }
+
+        fetchData();
+    }, [userId, isOwnProfile]);
+
+    const profileStats = [
+        {
+            label: "Followers",
+            value: profile?.followers || 0,
+            icon: <Users className="h-6 w-6 stroke-[1.5] text-gray-500" />,
+        },
+        {
+            label: "Following",
+            value: profile?.following || 0,
+            icon: <UserPlus className="h-6 w-6 stroke-[1.5] text-gray-500" />,
+        },
+        {
+            label: "Number of Posts",
+            value: profile?.publicPolls || 0,
+            icon: <LayoutDashboard className="h-6 w-6 stroke-[1.5] text-gray-500" />,
+        },
+    ];
+
+    // Append extra stats if this is the user's own profile
+    if (isOwnProfile) {
+        profileStats.push(
+            {
+                label: "Inner Circle",
+                value: profile?.in_inner_circle || 0,
+                icon: <Circle className="h-6 w-6 stroke-[1.5] text-gray-500" />,
+            },
+            {
+                label: "Groups Joined",
+                value: profile?.joined_groups || 0,
+                icon: <UsersRound className="h-6 w-6 stroke-[1.5] text-gray-500" />,
+            },
+            {
+                label: "Groups Created",
+                value: profile?.created_groups || 0,
+                icon: <UserCircle2 className="h-6 w-6 stroke-[1.5] text-gray-500" />,
+            }
+        );
+    }
+
+    const [isFollowing, setIsFollowing] = useState(profile?.youFollow === 1);
+
+    const handleDelete = (postId) => {
+      setPolls((prev) => prev.filter((p) => p.id !== postId));
+    };
+
+    const handleUpdate = (updatedPost) => {
+      setPolls((prev) => prev.map((p) => (p.id === updatedPost.id ? updatedPost : p)));
+    };
+    
+    const handleFollowToggle = async () => {
+        setFollowLoading(true);
+
+        const action = isFollowing ? "unfl" : "fl";
+        const url = `${BASE_URL}/user/manage-follow?user_id=${userId}&type=${action}`;
+
+        try {
+            await fetch(url, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${localStorage.getItem("token")}`,
+                },
+            });
+
+            setIsFollowing(!isFollowing);
+        } catch (error) {
+            console.error("Follow/unfollow failed:", error);
+        } finally {
+            setFollowLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        setIsFollowing(profile?.youFollow === 1);
+    }, [profile?.youFollow]);
+    const openEditProfileModal = () => {
+        setIsEditProfileModalOpen(true);
+    };
+
+    const closeEditProfileModal = () => {
+        setIsEditProfileModalOpen(false);
+    };
+
+    const handlePostUnsave = (postId) => {
+      // Remove the post from the list if it was unsaved
+      setPolls(prevPolls => prevPolls.filter(poll => poll.id !== postId));
+    };
 
   if (loading) return <div className="text-center py-10">Loading...</div>;
   if (!profile) return <div className="text-center py-10">User not found.</div>;
@@ -143,6 +186,15 @@ export default function UserProfile() {
           <ArrowLeft className="w-5 h-5 text-pink-600" />
         </button>
         {profile.user_name}
+            {/* Edit Profile Button (Visible for Own Profile) */}
+             {isOwnProfile && (
+               <button
+                 onClick={openEditProfileModal}
+                className="ml-auto px-4 py-2 bg-pink-100 text-pink-600 rounded-full text-sm font-medium hover:bg-pink-200 transition"
+              >
+               Edit Profile
+              </button>
+            )}
       </h2>
 
       <div className="flex flex-col px-5">
@@ -202,13 +254,20 @@ export default function UserProfile() {
             {/* Polls */}
             <div className="mt-6 space-y-4">
               {polls.map((poll) => (
-                <PostCard key={poll.id} post={poll} />
+                <PostCard 
+                  key={poll.id} 
+                  post={poll} 
+                  onOpenModal={setSelectedPostId}
+                  onUnsave={handlePostUnsave}
+                  onDelete={handleDelete}
+                  onUpdate={handleUpdate}
+                />
               ))}
             </div>
           </div>
 
           {/* Sidebar */}
-          <div className="w-full md:w-64 space-y-4 sticky top-10 pl-4">
+          <div className="w-80 space-y-4">
             {!isOwnProfile && (
               <button
                 onClick={handleFollowToggle}
@@ -245,6 +304,18 @@ export default function UserProfile() {
           </div>
         </div>
       </div>
+             {/* Conditionally Render EditProfileModal */}
+             {isEditProfileModalOpen && (
+               <EditProfileModal
+                 profile={profile}
+                 onClose={closeEditProfileModal}
+                 onProfileUpdate={handleProfileUpdate}
+               />
+             )}
+             {/* Render PostModal when a post is selected */}
+             {selectedPostId && (
+               <PostModal postId={selectedPostId} onClose={() => setSelectedPostId(null)} />
+             )}
     </div>
   );
 }

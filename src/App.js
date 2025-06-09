@@ -6,11 +6,15 @@ import PostDetails from "./pages/PostDetails";
 import CreatePost from "./pages/CreatePost";
 import LoginPage from "./pages/auth/Login";
 import NotificationsPage from "./pages/Notification";
+import Signup from "./pages/auth/Signup";
+import EditPost from "./pages/EditPost";
+import RepublishPost from './pages/RepublishPost';
 
 function App() {
   return (
     <Routes>
       <Route path="/auth/login" element={<LoginPage />} />
+      <Route path="/auth/signup" element={<Signup />} />
 
       <Route path="/" element={<MainLayout />}>
         {/* Trending (Homepage) */}
@@ -52,9 +56,16 @@ function App() {
           element={<Home mode="category" category="saved posts" />}
         />
 
+        {/* Scheduled Posts */}
+        <Route
+          path="scheduled-posts"
+          element={<Home mode="category" category="scheduled posts" />}
+        />
+
         {/* Other routes */}
         <Route path="post/:id" element={<PostDetails />} />
         <Route path="create-post" element={<CreatePost />} />
+        <Route path="edit-post/:id" element={<EditPost />} />
 
         {/* Interest-based polls */}
         <Route path="interest/:topic" element={<Home mode="interest" />} />
@@ -66,6 +77,8 @@ function App() {
         <Route path="user/:username" element={<Home mode="user" />} />
 
         <Route path="notifications" element={<NotificationsPage />} />
+
+        <Route path="/republish-post/:id" element={<RepublishPost />} />
       </Route>
     </Routes>
   );

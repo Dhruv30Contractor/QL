@@ -2,7 +2,7 @@ import { useEffect, useState, useRef, useCallback } from "react";
 import PostCard from "../PostCard";
 import { BASE_URL } from "../../config";
 
-const CategoryPollList = ({ category }) => {
+const CategoryPollList = ({ category, onOpenModal }) => {
   const [polls, setPolls] = useState([]);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
@@ -29,9 +29,36 @@ const CategoryPollList = ({ category }) => {
       switch (currentCategory) {
         case "my posts":
           if (!userId) throw new Error("User ID not found in localStorage");
-          url = `${BASE_URL}/user/profile/${userId}?type=polls&page=${pageNumber}&limit=${limit}`;
-          options.method = "GET";
-          break;
+
+          // Construct query parameters manually
+          const queryParams = new URLSearchParams({
+            page: pageNumber.toString(),
+            limit: limit.toString(),
+            category: "posted",
+            // forProfile: userId,
+            include_unpublished: "true", // or "false" based on logic
+          });
+
+          url = `${BASE_URL}/polls/get-polls?${queryParams.toString()}`;
+
+          options.method = "POST";
+          options.headers = {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${localStorage.getItem("token")}`,
+          };
+          options.body = JSON.stringify({});
+        break;
+
+
+
+        case "scheduled posts":
+            url = `${BASE_URL}/polls/get-polls?page=${pageNumber}&limit=${limit}&category=scheduled`;
+            options.method = "POST";
+            options.body = JSON.stringify({
+              scheduled: true,
+              status: "scheduled"
+            });
+            break;
 
         case "saved posts":
           url = `${BASE_URL}/polls/get-polls?page=${pageNumber}&limit=${limit}&category=saved`;
@@ -88,10 +115,15 @@ const CategoryPollList = ({ category }) => {
         return;
       }
 
-      const newHasMore = pollsArray.length === limit;
+      // Filter out scheduled posts from my posts section
+      const filteredPolls = currentCategory === "my posts" 
+        ? pollsArray.filter(poll => poll.scheduled !== 1)
+        : pollsArray;
+
+      const newHasMore = filteredPolls.length === limit;
 
       setPolls((prevPolls) =>
-        pageNumber === 1 ? pollsArray : [...prevPolls, ...pollsArray]
+        pageNumber === 1 ? filteredPolls : [...prevPolls, ...filteredPolls]
       );
       setHasMore(newHasMore);
     } catch (error) {
@@ -99,6 +131,21 @@ const CategoryPollList = ({ category }) => {
     } finally {
       setLoading(false);
     }
+  };
+
+  // Handle post unsave
+  const handlePostUnsave = (postId) => {
+    if (category === "saved posts") {
+      setPolls((prevPolls) => prevPolls.filter((poll) => poll.id !== postId));
+    }
+  };
+
+  const handleDelete = (postId) => {
+    setPolls((prev) => prev.filter((p) => p.id !== postId));
+  };
+
+  const handleUpdate = (updatedPost) => {
+    setPolls((prev) => prev.map((p) => (p.id === updatedPost.id ? updatedPost : p)));
   };
 
   useEffect(() => {
@@ -138,7 +185,13 @@ const CategoryPollList = ({ category }) => {
             key={post.id || index}
             ref={index === polls.length - 1 ? lastPostRef : null}
           >
-            <PostCard post={post} />
+            <PostCard 
+              post={post} 
+              onOpenModal={onOpenModal} 
+              onUnsave={handlePostUnsave}
+              onDelete={handleDelete}
+              onUpdate={handleUpdate}
+            />
           </div>
         ))}
 

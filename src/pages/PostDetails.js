@@ -1,16 +1,18 @@
 import React, { useEffect, useState } from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import PostCard from "../components/PostCard";
 import { BASE_URL } from "../config";
 
 export default function PostDetails() {
   const location = useLocation();
+  const navigate = useNavigate();
   // Extract post ID from the pathname, assuming URL like "/polls/2060"
   const postId = location.pathname.split("/").pop();
 
   const [post, setPost] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [selectedPostId, setSelectedPostId] = useState(null);
 
   useEffect(() => {
     if (!postId) return;
@@ -32,6 +34,13 @@ export default function PostDetails() {
     fetchPost();
   }, [postId]);
 
+  const handlePostUnsave = (postId) => {
+    // If we're on the saved posts page, navigate back
+    if (location.pathname.includes('/saved-posts')) {
+      navigate(-1);
+    }
+  };
+
   if (loading) return <div className="p-4 text-center">Loading post...</div>;
   if (error)
     return <div className="p-4 text-center text-red-500">Error: {error}</div>;
@@ -39,7 +48,11 @@ export default function PostDetails() {
 
   return (
     <div className="flex flex-col w-full m-5 overflow-y-auto no-scrollbar">
-      <PostCard post={post} />
+      <PostCard 
+        post={post} 
+        onOpenModal={setSelectedPostId}
+        onUnsave={handlePostUnsave}
+      />
     </div>
   );
 }

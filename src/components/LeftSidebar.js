@@ -9,6 +9,7 @@ import {
   Smile,
   GraduationCap,
   ChevronLeft,
+  Clock,
 } from "lucide-react";
 import React from "react";
 import { Link } from "react-router-dom";
@@ -24,6 +25,7 @@ export default function LeftSidebar({ collapsed, setCollapsed }) {
     { label: "Inner Circle", icon: GraduationCap, path: "/inner-circle" },
     { label: "My Posts", icon: Palette, path: "/my-posts" },
     { label: "Saved Posts", icon: Leaf, path: "/saved-posts" },
+    { label: "Scheduled Posts", icon: Clock, path: "/scheduled-posts" },
   ];
 
   const menuItems = [
