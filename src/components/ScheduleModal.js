@@ -1,17 +1,31 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { X } from 'lucide-react';
 
 const ScheduleModal = ({ onClose, onSchedule, initialDate }) => {
-  const [selectedOption, setSelectedOption] = useState(initialDate ? 'custom' : 'now');
-  const [customDate, setCustomDate] = useState(
-    initialDate ? new Date(initialDate).toISOString().split('T')[0] : ''
-  );
-  const [customTime, setCustomTime] = useState(
-    initialDate ? new Date(initialDate).toTimeString().slice(0, 5) : ''
-  );
-  const [timePeriod, setTimePeriod] = useState(
-    initialDate ? (new Date(initialDate).getHours() >= 12 ? 'PM' : 'AM') : 'AM'
-  );
+  const [selectedOption, setSelectedOption] = useState('custom');
+  const [customDate, setCustomDate] = useState('');
+  const [customTime, setCustomTime] = useState('');
+  const [timePeriod, setTimePeriod] = useState('AM');
+// console.log(initialDate);
+  // Initialize date and time when component mounts or initialDate changes
+  useEffect(() => {
+    if (initialDate) {
+      const date = new Date(initialDate);
+      // Get the local date string in YYYY-MM-DD format
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      setCustomDate(`${year}-${month}-${day}`);
+      
+      // Get the local time
+      const hours = date.getHours();
+      const minutes = date.getMinutes();
+      const period = hours >= 12 ? 'PM' : 'AM';
+      const formattedHours = hours % 12 || 12;
+      setCustomTime(`${formattedHours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`);
+      setTimePeriod(period);
+    }
+  }, [initialDate]);
 
   // Convert 24h time to 12h format
   const convertTo12Hour = (time24) => {
@@ -25,10 +39,12 @@ const ScheduleModal = ({ onClose, onSchedule, initialDate }) => {
   };
 
   // Convert 12h time to 24h format
-  const convertTo24Hour = (time12, period) => {
-    const [hours, minutes] = time12.split(':').map(Number);
-    const hours24 = period === 'PM' ? (hours % 12) + 12 : hours % 12;
-    return `${String(hours24).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+  const convertTo24Hour = (time, period) => {
+    const [hours, minutes] = time.split(':').map(Number);
+    let hour24 = hours;
+    if (period === 'PM' && hours !== 12) hour24 += 12;
+    if (period === 'AM' && hours === 12) hour24 = 0;
+    return `${hour24.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
   };
 
   const handleSchedule = () => {
@@ -42,21 +58,12 @@ const ScheduleModal = ({ onClose, onSchedule, initialDate }) => {
       const time24 = convertTo24Hour(customTime, timePeriod);
       const scheduledDate = new Date(`${customDate}T${time24}`);
       if (scheduledDate <= new Date()) {
-        // alert('Please select a future date and time');
+        alert('Please select a future date and time');
         return;
       }
       onSchedule(scheduledDate);
     }
   };
-
-  // Initialize time in 12-hour format if there's an initial date
-  useState(() => {
-    if (initialDate) {
-      const { time, period } = convertTo12Hour(new Date(initialDate).toTimeString().slice(0, 5));
-      setCustomTime(time);
-      setTimePeriod(period);
-    }
-  }, [initialDate]);
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">

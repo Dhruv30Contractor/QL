@@ -5,6 +5,7 @@ import { BASE_URL } from "../config";
 import PollForm from "../components/PollForm";
 import PostForm from "../components/PostForm";
 
+
 const EditPost = () => {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -113,9 +114,10 @@ const EditPost = () => {
             isEdit: true,
             postId: post.id,
             scheduled: post.scheduled === 1,
-            scheduled_date: post.scheduled_date,
+            scheduled_date: post.scheduled === 1 ? (post.scheduled_date || post.createdAt) : null,
             incognito: post.incognito === 1,
-            isOutcome: post.is_outcome
+            isOutcome: post.is_outcome,
+            isPublished: post.scheduled === 0
           }}
           onSuccess={handleUpdateSuccess}
         />
@@ -142,8 +144,9 @@ const EditPost = () => {
             isEdit: true,
             postId: post.id,
             scheduled: post.scheduled === 1,
-            scheduled_date: post.scheduled_date,
-            incognito: post.incognito === 1
+            scheduled_date: post.scheduled === 1 ? (post.scheduled_date || post.createdAt) : null,
+            incognito: post.incognito === 1,
+            isPublished: post.scheduled === 0
           }}
           onSuccess={handleUpdateSuccess}
         />

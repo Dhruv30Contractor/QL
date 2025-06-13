@@ -23,7 +23,7 @@ import PostForm from "./PostForm";
 import PortalDropdown from "./PortalDropdown";
 import ScheduleModal from "./ScheduleModal";
 
-const PostCard = ({ post, onOpenModal, onUnsave, onDelete, onUpdate }) => {
+const PostCard = ({ post, onOpenModal, onUnsave, onDelete, onUpdate, onCommentClick }) => {
   const user = post?.User || {};
   const isPoll = post?.type === "poll";
   const attachments = post.attachments || [];
@@ -37,6 +37,7 @@ const PostCard = ({ post, onOpenModal, onUnsave, onDelete, onUpdate }) => {
   // Initialize liked state based on post data
   const [liked, setLiked] = useState(post?.isLiked === 1 || post?.isLiked === true);
   const [likesCount, setLikesCount] = useState(post?.totalLikes || 0);
+  const [commentCount, setCommentCount] = useState(post?.totalComments || 0);
   const [isLoading, setIsLoading] = useState(false);
   const [selectedOptionId, setSelectedOptionId] = useState(null);
   const [pollOptions, setPollOptions] = useState(options);
@@ -48,6 +49,14 @@ const PostCard = ({ post, onOpenModal, onUnsave, onDelete, onUpdate }) => {
 
   const dropdownButtonRef = useRef(null);
   const [dropdownPos, setDropdownPos] = useState({ top: 0, left: 0 });
+
+  // Add state for tracking post interactions
+  const [postInteractions, setPostInteractions] = useState({
+    likes: post?.totalLikes || 0,
+    comments: post?.totalComments || 0,
+    saved: post?.isSaved || false,
+    votes: post?.totalVotes || 0,
+  });
 
   const handleDropdownOpen = () => {
     setShowDropdown(true);
@@ -112,6 +121,13 @@ const PostCard = ({ post, onOpenModal, onUnsave, onDelete, onUpdate }) => {
         });
 
         setPollOptions(updatedOptions);
+
+        // Update postInteractions with new vote count
+        const totalVotes = updatedOptions.reduce((sum, opt) => sum + (opt.votesCount || 0), 0);
+        setPostInteractions(prev => ({
+          ...prev,
+          votes: totalVotes
+        }));
       } else {
         console.warn("Vote failed: ", response.data.message);
       }
@@ -158,6 +174,11 @@ const PostCard = ({ post, onOpenModal, onUnsave, onDelete, onUpdate }) => {
       if (response.data.status) {
         setLiked(!liked);
         setLikesCount(prev => prev + (liked ? -1 : 1));
+        // Update post interactions state
+        setPostInteractions(prev => ({
+          ...prev,
+          likes: prev.likes + (liked ? -1 : 1)
+        }));
       } else {
         console.warn("Like/Unlike failed: ", response.data.message);
         alert(response.data.message || "Failed to like/unlike post.");
@@ -178,7 +199,6 @@ const PostCard = ({ post, onOpenModal, onUnsave, onDelete, onUpdate }) => {
     }
 
     try {
-      // Send the opposite of current state to toggle
       const willUnsave = isSaved ? 1 : 0;
 
       const response = await axios.post(
@@ -192,38 +212,53 @@ const PostCard = ({ post, onOpenModal, onUnsave, onDelete, onUpdate }) => {
         }
       );
 
-      // Toggle the save state based on the action
       if (willUnsave) {
-        // We tried to unsave, so now it should be unsaved
         setIsSaved(false);
-        // Notify parent component about unsave
+        // Update post interactions state
+        setPostInteractions(prev => ({
+          ...prev,
+          saved: false
+        }));
         if (onUnsave) {
           onUnsave(post.id);
         }
       } else {
-        // We tried to save, so now it should be saved
         setIsSaved(true);
+        // Update post interactions state
+        setPostInteractions(prev => ({
+          ...prev,
+          saved: true
+        }));
       }
     } catch (error) {
       console.error("Error toggling save:", error);
-      // Revert the state on error
       setIsSaved(!isSaved);
     }
   };
 
+  const handleShare = async () => {
+    if (!navigator.share) {
+      alert('Web Share API not supported in this browser. You can copy the link manually.');
+      // Fallback: If Web Share API is not supported, you can implement a copy to clipboard functionality here.
+      // For now, I'll just alert the user.
+      console.warn('Web Share API not supported.');
+      return;
+    }
+
+    try {
+      await navigator.share({
+        title: post.question || 'Check out this post on Queryloom',
+        text: post.question || 'Check out this post!',
+        url: `${window.location.origin}/post/${post.id}`,
+      });
+      console.log('Content shared successfully');
+    } catch (error) {
+      console.error('Error sharing:', error);
+    }
+  };
+
   const handleCopyLink = () => {
-    // Create a slug from the question by:
-    // 1. Converting to lowercase
-    // 2. Replacing spaces with hyphens
-    // 3. Removing special characters
-    const slug = post.question
-      .toLowerCase()
-      .replace(/[^a-z0-9\s-]/g, '')
-      .replace(/\s+/g, '-')
-      .replace(/-+/g, '-')
-      .trim();
-    
-    const postLink = `/user/${user.user_name}/${slug}-${post.id}`;
+    const postLink = `/post/${post.id}`;
     navigator.clipboard.writeText(window.location.origin + postLink);
     setIsCopied(true);
     setShowDropdown(false);
@@ -369,17 +404,24 @@ const PostCard = ({ post, onOpenModal, onUnsave, onDelete, onUpdate }) => {
         method: "PUT",
         headers: {
           "Authorization": `Bearer ${token}`,
-          // Do NOT set Content-Type for FormData
         },
         body: formData,
       });
 
       const result = await response.json();
       if (response.ok && result.status) {
-        // alert("Poll rescheduled successfully!");
         setShowRescheduleModal(false);
-        // if (typeof onDelete === "function") onDelete(post.id); // Remove from current list if needed
-        if (typeof onUpdate === "function") onUpdate({...post, scheduled_date: scheduledDate }); // if API returns updated post
+        // Update the post state with all fields and new scheduled date
+        const updatedPost = {
+          ...post,
+          scheduled_date: scheduledDate,
+          scheduled: true,
+          createdAt: scheduledDate // Update createdAt to match scheduled date
+        };
+        // Notify parent component about the update
+        if (typeof onUpdate === "function") {
+          onUpdate(updatedPost);
+        }
       } else {
         alert(result.message || "Failed to reschedule poll.");
       }
@@ -399,7 +441,27 @@ const PostCard = ({ post, onOpenModal, onUnsave, onDelete, onUpdate }) => {
     setShowDropdown(false);
   };
 
-  console.log("isScheduled", isScheduled, post.scheduled, post.scheduled_date);
+  console.log("isScheduled", isScheduled, post.scheduled, post.createdAt);
+
+  // Update the comment count update handler
+  useEffect(() => {
+    const handleCommentCountUpdate = (event) => {
+      if (event.detail.postId === post.id) {
+        setCommentCount(event.detail.count);
+        // Update post interactions state
+        setPostInteractions(prev => ({
+          ...prev,
+          comments: event.detail.count
+        }));
+      }
+    };
+
+    window.addEventListener('commentCountUpdate', handleCommentCountUpdate);
+
+    return () => {
+      window.removeEventListener('commentCountUpdate', handleCommentCountUpdate);
+    };
+  }, [post.id]);
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-200 space-y-4 w-full overflow-visible">
@@ -456,7 +518,9 @@ const PostCard = ({ post, onOpenModal, onUnsave, onDelete, onUpdate }) => {
                     {isScheduled ? (
                       <>
                         <MenuItem icon={<Send size={16} />} onClick={handlePublishNow}>Publish Now</MenuItem>
-                        <MenuItem icon={<Edit size={16} />} onClick={handleEditPost}>Edit Post</MenuItem>
+                        {(!postInteractions.likes && !postInteractions.comments && !postInteractions.votes) && (
+                          <MenuItem icon={<Edit size={16} />} onClick={handleEditPost}>Edit Post</MenuItem>
+                        )}
                         <MenuItem icon={<Clock size={16} />} onClick={handleReschedule}>Reschedule Post</MenuItem>
                         <MenuItem icon={<Trash2 size={16} />} onClick={handleDelete}>Delete</MenuItem>
                       </>
@@ -468,7 +532,9 @@ const PostCard = ({ post, onOpenModal, onUnsave, onDelete, onUpdate }) => {
                     ) : (
                       <>
                         <MenuItem icon={<Copy size={16} />} onClick={handleCopyLink}>{isCopied ? "Copied!" : "Copy Link"}</MenuItem>
-                        <MenuItem icon={<Edit size={16} />} onClick={handleEditPost}>Edit Post</MenuItem>
+                        {(!postInteractions.likes && !postInteractions.comments && !postInteractions.votes && !postInteractions.saved) && (
+                          <MenuItem icon={<Edit size={16} />} onClick={handleEditPost}>Edit Post</MenuItem>
+                        )}
                         <MenuItem icon={<EyeOff size={16} />} onClick={handleUnpublish}>Unpublish</MenuItem>
                         <MenuItem icon={<RefreshCw size={16} />} onClick={handleRepublish}>Republish</MenuItem>
                         <MenuItem icon={<Trash2 size={16} />} onClick={handleDelete}>Delete</MenuItem>
@@ -586,8 +652,8 @@ const PostCard = ({ post, onOpenModal, onUnsave, onDelete, onUpdate }) => {
       <div className="flex justify-between items-center text-sm text-gray-600 border-t border-gray-200 p-4">
         <div className="flex gap-6 items-center">
           <div
-            className={`flex items-center gap-1 ${isUnpublished ? "" : "cursor-pointer"}`}
-            onClick={isUnpublished ? null : handleLike}
+            className={`flex items-center gap-1 ${isScheduled || isUnpublished ? "opacity-50 " : "cursor-pointer"}`}
+            onClick={isScheduled || isUnpublished ? null : handleLike}
           >
             <Heart
               className={`h-4 w-4 ${
@@ -597,17 +663,17 @@ const PostCard = ({ post, onOpenModal, onUnsave, onDelete, onUpdate }) => {
             <span>{likesCount}</span>
           </div>
           <div
-            className={`flex items-center gap-1 ${isUnpublished ? "" : "cursor-pointer"}`}
-            onClick={isUnpublished ? null : () => onOpenModal(post.id)}
+            className={`flex items-center gap-1 ${isScheduled || isUnpublished ? "opacity-50 " : "cursor-pointer"}`}
+            onClick={isScheduled || isUnpublished ? null : () => onOpenModal(post.id)}
           >
             <MessageCircle className="h-4 w-4 text-gray-600" />
-            <span>{post.totalComments || 0}</span>
+            <span>{commentCount}</span>
           </div>
         </div>
         <div className="flex items-center text-gray-600 gap-6 font-medium">
           <div
-            className={`flex items-center gap-1 ${isUnpublished ? "" : "cursor-pointer"}`}
-            onClick={isUnpublished ? null : handleSaveToggle}
+            className={`flex items-center gap-1 ${isScheduled || isUnpublished ? "opacity-50 " : "cursor-pointer"}`}
+            onClick={isScheduled || isUnpublished ? null : handleSaveToggle}
           >
             <Bookmark
               className={`h-4 w-4 transition-all duration-200 ${
@@ -616,10 +682,13 @@ const PostCard = ({ post, onOpenModal, onUnsave, onDelete, onUpdate }) => {
             />
           </div>
 
-          <div className={`flex items-center gap-1 ${isUnpublished ? "" : "cursor-pointer"}`}>
+          <div
+            className={`flex items-center gap-1 ${isScheduled || isUnpublished ? "opacity-50 " : "cursor-pointer"}`}
+            onClick={isScheduled || isUnpublished ? null : handleShare}
+          >
             <Send className="h-4 w-4" />
           </div>
-          <div className={`flex items-center gap-1 text-pink-600 ${isUnpublished ? "" : "cursor-pointer"}`}>
+          <div className={`flex items-center gap-1 text-pink-600 ${isScheduled || isUnpublished ? "opacity-50 " : "cursor-pointer"}`}>
             <BarChart3 className="h-4 w-4" />
             <span>View Analytics</span>
           </div>
@@ -632,7 +701,7 @@ const PostCard = ({ post, onOpenModal, onUnsave, onDelete, onUpdate }) => {
           onSchedule={(date) => {
             handleRescheduleSave(date.toISOString().slice(0, 19).replace('T', ' '));
           }}
-          initialDate={post.scheduled_date}
+          initialDate={post.createdAt ? new Date(post.createdAt).toISOString() : null}
         />
       )}
     </div>

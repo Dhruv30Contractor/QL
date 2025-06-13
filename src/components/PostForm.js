@@ -1,431 +1,340 @@
 import { useState, useEffect } from "react";
-import { Smile, UploadCloud, Clock, Globe, ChevronDown, X } from "lucide-react";
+import { UploadCloud, ChevronDown, Globe, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import ScheduleModal from "./ScheduleModal";
 
 const PostForm = ({ initialData, onSuccess }) => {
   const [postContent, setPostContent] = useState(initialData?.question || "");
   const [postAllowComments, setPostAllowComments] = useState(initialData?.commentPermission || "everyone");
-  const [postMedia, setPostMedia] = useState([]);
+  const [existingAttachments, setExistingAttachments] = useState([]);
+  const [newAttachments, setNewAttachments] = useState([]);
+  const [removedAttachments, setRemovedAttachments] = useState([]);
+
   const [visibility, setVisibility] = useState(initialData?.visibility || "Public");
+  const [incognito, setIncognito] = useState(initialData?.incognito || "0");
   const [showDropdown, setShowDropdown] = useState(false);
   const [showScheduleModal, setShowScheduleModal] = useState(false);
-  const [scheduledDate, setScheduledDate] = useState(initialData?.scheduled_date ? new Date(initialData.scheduled_date) : null);
-  const [isRepublish, setIsRepublish] = useState(false);
-  const [republish_poll_id, setRepublish_poll_id] = useState(null);
-  const [removedAttachments, setRemovedAttachments] = useState([]);
+  const [scheduledDate, setScheduledDate] = useState(
+    initialData?.scheduled_date ? new Date(initialData.scheduled_date) : null
+  );
+
+  const [isRepublish, setIsRepublish] = useState(initialData?.isRepublish || false);
+  const [republish_poll_id, setRepublish_poll_id] = useState(initialData?.republish_poll_id || null);
 
   const navigate = useNavigate();
 
   useEffect(() => {
-    if (initialData) {
-      setPostContent(initialData.question || "");
-      setPostAllowComments(initialData.commentPermission || "everyone");
-      setVisibility(initialData.visibility || "Public");
-      setScheduledDate(initialData.scheduled_date ? new Date(initialData.scheduled_date) : null);
-      setIsRepublish(initialData.isRepublish || false);
-      setRepublish_poll_id(initialData.republish_poll_id || null);
-
-      if (initialData.attachments) {
-        // **MODIFICATION HERE:**  Map over the initial attachments to extract filename.
-        const formattedAttachments = initialData.attachments.map(attachment => ({
-          ...attachment, // Keep existing properties (url, attch_dimension etc.)
-          attch_name: attachment.attch_name || (attachment.attachment ? attachment.attachment.split('/').pop() : 'unknown') // Extract filename from the URL if attch_name is missing
-
-        }));
-
-        setPostMedia(formattedAttachments);
-        setRemovedAttachments([]);
-      }
+    if (initialData?.attachments) {
+      const attachments = initialData.attachments.map(att => ({
+        url: att.attachment ? `https://assets-stage.queryloom.com/${att.attachment}` : att.url,
+        attch_name: att.attch_name,
+        attch_dimension: att.attch_dimension,
+        thumbnail: att.thumbnail,
+        attachment: att.attachment,
+      }));
+      setExistingAttachments(attachments);
     }
   }, [initialData]);
 
-  // Handle file selection
   const handleMediaChange = (e) => {
     const files = Array.from(e.target.files);
-    if (postMedia.length + files.length > 4) {
+    if (existingAttachments.length + newAttachments.length + files.length > 4) {
       alert("You can only upload up to 4 attachments");
       return;
     }
-    setPostMedia(prev => [...prev, ...files]);
+    setNewAttachments(prev => [...prev, ...files]);
   };
 
-  // Remove a specific attachment
-    // Remove a specific attachment
-    const removeAttachment = (index) => {
-      const attachment = postMedia[index];
-      if (attachment.url) {  // Only track removal of existing attachments
-        const filePath = attachment.url.split('assets-stage.queryloom.com/').pop();
-  
-        setRemovedAttachments(prev => [
-          ...prev,
-          {
-            attachment: filePath,
-            attch_name: attachment.attch_name || filePath.split('/').pop() , // Use existing attch_name or extract from path
-            attch_dimension: attachment.attch_dimension || "0,0", // Assuming you have or can get dimension here
-            thumbnail: null,
-          },
-        ]);
-      }
-      setPostMedia(prev => prev.filter((_, i) => i !== index));
-    };
-
-  // Toggle visibility dropdown
-  const toggleVisibilityDropdown = (e) => {
-    e.preventDefault();
-    setShowDropdown((prev) => !prev);
+  const removeExistingAttachment = (index) => {
+    const attachment = existingAttachments[index];
+    const filePath = attachment.url.split("assets-stage.queryloom.com/").pop();
+    setRemovedAttachments(prev => [...prev, { attachment: filePath }]);
+    setExistingAttachments(prev => prev.filter((_, i) => i !== index));
   };
 
-  // Set visibility option
-  const handleVisibilityChange = (option) => {
-    setVisibility(option);
-    setShowDropdown(false);
+  const removeNewAttachment = (index) => {
+    setNewAttachments(prev => prev.filter((_, i) => i !== index));
   };
 
-  // Handle form submission
+  const toggleVisibilityDropdown = () => {
+    setShowDropdown(!showDropdown);
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
       const formData = new FormData();
       const attachments = [];
-      let hasNewAttachments = false;
 
-      // Upload each media file and collect attachment data
-      for (const file of postMedia) {
-        if (file instanceof File) {  // Only upload new files
-          hasNewAttachments = true;
+      // Upload new files first
+      for (const file of newAttachments) {
+        const mediaFormData = new FormData();
+        mediaFormData.append("file", file);
+
+        const uploadResponse = await fetch("https://api-stage.queryloom.com/file-upload", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+          body: mediaFormData,
+        });
+
+        if (!uploadResponse.ok) throw new Error("Media upload failed.");
+
+        const uploadResult = await uploadResponse.json();
+
+        let attch_dimension = "0,0";
+        if (file.type.startsWith("image/")) {
+          attch_dimension = await new Promise(resolve => {
+            const img = new Image();
+            img.onload = () => resolve(`${img.width},${img.height}`);
+            img.src = URL.createObjectURL(file);
+          });
+        }
+
+        attachments.push({
+          attachment: uploadResult.file,
+          attch_name: file.name,
+          attch_dimension,
+          thumbnail: null,
+        });
+      }
+
+      // Republish Flow:
+      if (isRepublish && republish_poll_id) {
+        formData.append("republish_poll_id", republish_poll_id);
+        formData.append("type", "post");
+        formData.append("question", postContent.trim());
+        formData.append("comment_permission", postAllowComments);
+        formData.append("visibility", visibility.toLowerCase());
+        formData.append("incognito", incognito);
+
+        // Handle attachments for republish
+        const allAttachments = [];
+        
+        // Add new attachments
+        for (const file of newAttachments) {
           const mediaFormData = new FormData();
           mediaFormData.append("file", file);
 
-          const uploadResponse = await fetch(
-            "https://api-stage.queryloom.com/file-upload",
-            {
-              method: "POST",
-              headers: {
-                Authorization: `Bearer ${localStorage.getItem("token")}`,
-              },
-              body: mediaFormData,
-            }
-          );
+          const uploadResponse = await fetch("https://api-stage.queryloom.com/file-upload", {
+            method: "POST",
+            headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+            body: mediaFormData,
+          });
 
-          if (!uploadResponse.ok) {
-            throw new Error("Media upload failed.");
-          }
-
+          if (!uploadResponse.ok) throw new Error("Media upload failed.");
           const uploadResult = await uploadResponse.json();
 
-          if (uploadResult?.file) {
-            // Get image dimensions for images
-            let attch_dimension = null;
-            if (file.type.startsWith('image/')) {
-              attch_dimension = await new Promise((resolve) => {
-                const img = new Image();
-                img.onload = () => {
-                  resolve(`${img.width},${img.height}`);
-                };
-                img.src = URL.createObjectURL(file);
-              });
-            }
-
-            attachments.push({
-              attachment: uploadResult.file,
-              attch_name: file.name,
-              attch_dimension: attch_dimension || "0,0",
-              thumbnail: null,
+          let attch_dimension = "0,0";
+          if (file.type.startsWith("image/")) {
+            attch_dimension = await new Promise(resolve => {
+              const img = new Image();
+              img.onload = () => resolve(`${img.width},${img.height}`);
+              img.src = URL.createObjectURL(file);
             });
           }
-        } else if (file.url) {  // Keep existing attachments that weren't removed
-          // Get dimensions for existing images
-          let attch_dimension = "0,0";
-          if (file.url.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
-            try {
-              attch_dimension = await new Promise((resolve) => {
-                const img = new Image();
-                img.onload = () => {
-                  resolve(`${img.width},${img.height}`);
-                };
-                img.onerror = () => resolve("0,0");
-                img.src = file.url;
-              });
-            } catch (error) {
-              console.error("Error getting image dimensions:", error);
-              attch_dimension = "0,0";
-            }
-          }
 
-          // Extract the file path from the URL
-          const filePath = file.url.split('assets-stage.queryloom.com/').pop();
-
-          attachments.push({
-            attachment: filePath,
-            attch_name: file.attch_name,
-            attch_dimension: attch_dimension,
+          allAttachments.push({
+            attachment: uploadResult.file,
+            attch_name: file.name,
+            attch_dimension,
             thumbnail: null,
           });
         }
-      }
 
-      if (isRepublish && republish_poll_id) {
-        // First, delete the old post
-        const deleteResponse = await fetch(`https://api-stage.queryloom.com/polls/edit/${republish_poll_id}`, {
-          method: "PUT",
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem("token")}`,
-          },
-          body: JSON.stringify({ del: 1 })
-        });
+        // Add existing attachments that haven't been removed
+        const existingAttachmentsToKeep = existingAttachments.filter(att => 
+          !removedAttachments.some(removed => removed.attachment === att.attachment)
+        );
 
-        if (!deleteResponse.ok) {
-          throw new Error("Failed to delete old post");
+        allAttachments.push(...existingAttachmentsToKeep.map(file => {
+          // Extract the attachment path from the URL
+          const attachmentPath = file.url.split('assets-stage.queryloom.com/').pop();
+          return {
+            attachment: attachmentPath,
+            attch_name: file.attch_name || file.url.split('/').pop(),
+            attch_dimension: file.attch_dimension || "0,0",
+            thumbnail: null,
+          };
+        }));
+
+        // Only append attachments if there are any
+        if (allAttachments.length > 0) {
+          formData.append("attachments", JSON.stringify(allAttachments));
         }
 
-        // Then create the new post
-        formData.append('republish_poll_id', republish_poll_id);
-        formData.append("type", "post");
-        formData.append("question", postContent.trim());
-        formData.append("comment_permission", postAllowComments);
-        formData.append("visibility", visibility.toLowerCase());
-        formData.append("incognito", "0");
-        formData.append("attachments", JSON.stringify(attachments));
-        formData.append("rmv_attachments", JSON.stringify(removedAttachments));
-
         const url = "https://api-stage.queryloom.com/polls/add-poll";
-        const method = "POST";
-
         const response = await fetch(url, {
-          method,
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem("token")}`,
-          },
+          method: "POST",
+          headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
           body: formData,
         });
 
-        if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.message || "Failed to republish post.");
-        }
-
-        const data = await response.json();
-        console.log("Republish Post response:", data);
-
-        if (onSuccess) {
-          onSuccess();
-        } else {
-          navigate("/my-posts");
-        }
+        if (!response.ok) throw new Error("Failed to republish post.");
+        if (onSuccess) onSuccess();
+        else navigate("/my-posts");
         return;
       }
 
+      // Edit Flow:
       if (initialData?.isEdit) {
         formData.append("question", postContent.trim());
-        formData.append("attachments", JSON.stringify(hasNewAttachments ? attachments : []));
-        formData.append("rmv_attachments", JSON.stringify(removedAttachments));
-      } else {
-        formData.append("type", "post");
-        formData.append("question", postContent.trim());
-        formData.append("comment_permission", postAllowComments);
-        formData.append("visibility", visibility.toLowerCase());
-        formData.append("incognito", "0");
         formData.append("attachments", JSON.stringify(attachments));
-        formData.append("rmv_attachments", "[]");
+        formData.append("rmv_attachments", JSON.stringify(removedAttachments));
 
         if (scheduledDate) {
-          formData.append("scheduled_date", scheduledDate.toISOString().slice(0, 19).replace('T', ' '));
+          formData.append("scheduled_date", scheduledDate.toISOString().slice(0, 19).replace("T", " "));
         }
+
+        const url = `https://api-stage.queryloom.com/polls/edit/${initialData.postId}`;
+        const response = await fetch(url, {
+          method: "PUT",
+          headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+          body: formData,
+        });
+
+        if (!response.ok) throw new Error("Failed to update post.");
+        if (onSuccess) onSuccess();
+        else navigate(scheduledDate ? "/scheduled-posts" : "/my-posts");
+        return;
       }
 
-      const url = initialData?.isEdit 
-        ? `https://api-stage.queryloom.com/polls/edit/${initialData.postId}`
-        : "https://api-stage.queryloom.com/polls/add-poll";
+      // New Post Flow:
+      formData.append("type", "post");
+      formData.append("question", postContent.trim());
+      formData.append("comment_permission", postAllowComments);
+      formData.append("visibility", visibility.toLowerCase());
+      formData.append("incognito", incognito);
+      formData.append("attachments", JSON.stringify([
+        ...attachments,
+        ...existingAttachments.map(file => ({
+          attachment: file.attachment,
+          attch_name: file.attch_name,
+          attch_dimension: file.attch_dimension,
+          thumbnail: file.thumbnail,
+        }))
+      ]));
+      formData.append("rmv_attachments", "[]");
 
-      const method = initialData?.isEdit ? "PUT" : "POST";
+      if (scheduledDate) {
+        formData.append("scheduled_date", scheduledDate.toISOString().slice(0, 19).replace("T", " "));
+      }
 
-      const response = await fetch(url, {
-        method,
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem("token")}`,
-        },
+      const response = await fetch("https://api-stage.queryloom.com/polls/add-poll", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
         body: formData,
       });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || "Failed to post.");
-      }
+      if (!response.ok) throw new Error("Failed to create post.");
+      if (onSuccess) onSuccess();
+      else navigate(scheduledDate ? "/scheduled-posts" : "/my-posts");
 
-      const data = await response.json();
-      console.log("Post response:", data);
-      
-      if (onSuccess) {
-        onSuccess();
-      } else {
-        navigate("/my-posts");
-      }
     } catch (error) {
       console.error("Error:", error);
-      alert(error.message || "Failed to create post. Please try again.");
+      alert(error.message || "Failed to create post.");
     }
-  };
-
-  const handleCancel = () => {
-    window.history.back();
   };
 
   return (
     <>
       <form onSubmit={handleSubmit} className="space-y-8 w-full">
+
         {/* Post Content */}
         <div className="p-5 pb-0">
-          <label className="block font-medium text-sm mb-2">
-            Write your post*
-          </label>
+          <label className="block font-medium text-sm mb-2">Write your post*</label>
           <textarea
-            className="w-full rounded-xl border border-gray-300 p-4 resize-none focus:outline-none focus:ring-2 focus:ring-pink-500 bg-gray-50"
+            className="w-full rounded-xl border border-gray-300 p-4 resize-none bg-gray-50"
             rows={6}
             maxLength={1000}
             placeholder="What's on your mind?"
             value={postContent}
             onChange={(e) => setPostContent(e.target.value)}
           />
-          <div className="text-xs text-right text-gray-400 mt-1">
-            {postContent.length} / 1000
-          </div>
+          <div className="text-xs text-right text-gray-400 mt-1">{postContent.length} / 1000</div>
         </div>
 
         {/* Allow Comments */}
         <div className="px-5 flex flex-col">
-          <label className="font-semibold text-sm mb-2 text-gray-700">
-            Allow Comments
-          </label>
+          <label className="font-semibold text-sm mb-2 text-gray-700">Allow Comments</label>
           <select
-            className="w-1/3 rounded-xl border border-gray-300 bg-gray-50 p-3 pr-8 text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-pink-500 transition-shadow"
+            className="w-1/3 rounded-xl border border-gray-300 bg-gray-50 p-3 pr-8"
             value={postAllowComments}
             onChange={(e) => setPostAllowComments(e.target.value)}
           >
-            <option value="everyone" className="text-pink-600 font-semibold">
-              From everyone
-            </option>
-            <option value="followers" className="hover:bg-gray-100">
-              Followers
-            </option>
-            <option value="mutual" className="hover:bg-gray-100">
-              People I follow and people who follow me
-            </option>
-            <option value="innerCircle" className="hover:bg-gray-100">
-              Inner circle
-            </option>
-            <option value="disallow" className="hover:bg-gray-100">
-              Disallow comments
-            </option>
+            <option value="everyone">From everyone</option>
+            <option value="followers">Followers</option>
+            <option value="mutual">Mutual</option>
+            <option value="innerCircle">Inner Circle</option>
+            <option value="disallow">Disallow comments</option>
           </select>
         </div>
 
-        {/* Media + Schedule + Visibility */}
+        {/* Upload / Schedule / Visibility */}
         <div className="px-5">
           <div className="flex justify-between items-center gap-4 flex-wrap">
-            {/* Upload Button */}
-            <label
-              htmlFor="mediaUpload"
-              className={`inline-flex items-center gap-2 border border-dashed border-pink-500 rounded-xl py-2 px-4 bg-gray-50 text-pink-600 cursor-pointer hover:bg-pink-50 transition ${
-                postMedia.length >= 4 ? 'opacity-50 cursor-not-allowed' : ''
-              }`}
-            >
+
+            {/* Upload */}
+            <label htmlFor="mediaUpload" className="inline-flex items-center gap-2 border border-dashed border-pink-500 rounded-xl py-2 px-4 bg-gray-50 text-pink-600 cursor-pointer">
               <UploadCloud size={20} />
               <span className="font-medium text-sm">Image/Video</span>
-              <input
-                type="file"
-                id="mediaUpload"
-                accept="image/*,video/*"
-                onChange={handleMediaChange}
-                className="hidden"
-                disabled={postMedia.length >= 4}
-                multiple
-              />
+              <input type="file" id="mediaUpload" accept="image/*,video/*" onChange={handleMediaChange} className="hidden" multiple />
             </label>
 
-            {/* Schedule Button */}
-            <button
-              type="button"
-              onClick={() => setShowScheduleModal(true)}
-              className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-pink-50 text-pink-600 hover:bg-pink-100 transition text-sm font-medium"
+            {/* Schedule */}
+            <button type="button" onClick={() => setShowScheduleModal(true)} className="px-3 py-2 rounded-xl bg-pink-50 text-pink-600"
+              disabled={initialData?.isPublished}
             >
-              <Clock size={16} />
               {scheduledDate ? 'Scheduled' : 'Schedule'}
             </button>
 
-            {/* Visibility Dropdown */}
+            {/* Visibility */}
             <div className="relative">
-              <button
-                onClick={toggleVisibilityDropdown}
-                className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-pink-50 text-pink-600 hover:bg-pink-100 transition text-sm font-medium"
+              <button type="button" onClick={toggleVisibilityDropdown} className="px-3 py-2 rounded-xl bg-pink-50 text-pink-600 flex items-center"
+                disabled={initialData?.isPublished}
               >
-                <Globe size={16} />
-                {visibility}
-                <ChevronDown size={16} />
+                <Globe size={16} /> {visibility} <ChevronDown size={16} />
               </button>
 
               {showDropdown && (
-                <div className="absolute right-0 mt-2 w-48 bg-white border border-gray-200 rounded-xl shadow-lg z-10 overflow-hidden">
-                  {["Public", "Followers", "Inner circle", "Group"].map(
-                    (option) => (
-                      <div
-                        key={option}
-                        className={`px-4 py-2 text-sm cursor-pointer hover:bg-gray-100 ${
-                          visibility === option
-                            ? "text-pink-600 font-semibold"
-                            : "text-gray-800"
-                        }`}
-                        onClick={() => handleVisibilityChange(option)}
-                      >
-                        {option}
-                      </div>
-                    )
-                  )}
+                <div className="absolute right-0 mt-2 w-48 bg-white border rounded-xl shadow-lg">
+                  {["Public", "Followers", "Inner circle", "Group"].map(option => (
+                    <div key={option} className={`px-4 py-2 text-sm cursor-pointer ${visibility === option ? "text-pink-600 font-semibold" : "text-gray-800"}`}
+                      onClick={() => { setVisibility(option); setShowDropdown(false); }}>
+                      {option}
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
           </div>
 
-          {/* Selected Files */}
-          {postMedia.length > 0 && (
-            <div className="mt-4 grid grid-cols-2 gap-4">
-              {postMedia.map((file, index) => (
-                <div key={index} className="relative group">
-                  <div className="aspect-square rounded-xl overflow-hidden bg-gray-100">
-                    {file instanceof File ? (
-                      file.type.startsWith('image/') ? (
-                        <img
-                          src={URL.createObjectURL(file)}
-                          alt={`attachment-${index}`}
-                          className="w-full h-full object-cover"
-                        />
-                      ) : (
-                        <video
-                          src={URL.createObjectURL(file)}
-                          className="w-full h-full object-cover"
-                        />
-                      )
-                    ) : (
-                      <img
-                        src={file.url}
-                        alt={`attachment-${index}`}
-                        className="w-full h-full object-cover"
-                      />
-                    )}
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => removeAttachment(index)}
-                    className="absolute top-2 right-2 bg-red-500 text-white p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
-                  >
-                    <X size={16} />
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
+          {/* Attachments Preview */}
+          <div className="mt-4 grid grid-cols-2 gap-4">
+            {/* Existing Attachments */}
+            {existingAttachments.map((file, index) => (
+              <div key={index} className="relative group">
+                <img src={file.url} alt="existing" className="w-full h-full object-cover rounded-xl" />
+                <button type="button" onClick={() => removeExistingAttachment(index)} className="absolute top-2 right-2 bg-red-500 text-white p-1 rounded-full">
+                  <X size={16} />
+                </button>
+              </div>
+            ))}
+            {/* New Attachments */}
+            {newAttachments.map((file, index) => (
+              <div key={index} className="relative group">
+                {file.type.startsWith("image/") ? (
+                  <img src={URL.createObjectURL(file)} alt="new" className="w-full h-full object-cover rounded-xl" />
+                ) : (
+                  <video src={URL.createObjectURL(file)} className="w-full h-full object-cover rounded-xl" controls />
+                )}
+                <button type="button" onClick={() => removeNewAttachment(index)} className="absolute top-2 right-2 bg-red-500 text-white p-1 rounded-full">
+                  <X size={16} />
+                </button>
+              </div>
+            ))}
+          </div>
 
-          {/* Scheduled Date Display */}
+          {/* Scheduled Date Preview */}
           {scheduledDate && (
             <div className="mt-2 text-sm text-gray-700">
               Scheduled for: {scheduledDate.toLocaleString()}
@@ -433,22 +342,10 @@ const PostForm = ({ initialData, onSuccess }) => {
           )}
         </div>
 
-        {/* Buttons */}
+        {/* Submit Buttons */}
         <div className="flex justify-between items-center p-5 border-t border-gray-300 sticky bottom-0 bg-white">
-          <button
-            type="button"
-            className="bg-gray-300 text-black px-4 py-2 rounded-lg"
-            onClick={handleCancel}
-          >
-            Cancel
-          </button>
-
-          <button
-            type="submit"
-            className="bg-pink-500 text-white px-4 py-2 rounded-lg"
-          >
-            {scheduledDate ? 'Schedule' : 'Post'}
-          </button>
+          <button type="button" className="bg-gray-300 text-black px-4 py-2 rounded-lg" onClick={() => window.history.back()}>Cancel</button>
+          <button type="submit" className="bg-pink-500 text-white px-4 py-2 rounded-lg">{scheduledDate ? 'Schedule' : 'Post'}</button>
         </div>
       </form>
 
@@ -456,10 +353,7 @@ const PostForm = ({ initialData, onSuccess }) => {
       {showScheduleModal && (
         <ScheduleModal
           onClose={() => setShowScheduleModal(false)}
-          onSchedule={(date) => {
-            setScheduledDate(date);
-            setShowScheduleModal(false);
-          }}
+          onSchedule={(date) => { setScheduledDate(date); setShowScheduleModal(false); }}
           initialDate={scheduledDate}
         />
       )}
